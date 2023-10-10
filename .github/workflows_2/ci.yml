@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    tags:
+      - v*
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  get-diff:
+    name: Get diff
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      workflows: ${{ steps.get-diff-workflows.outputs.diff }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Get diff for workflows
+        uses: technote-space/get-diff-action@v4.0.1
+        id: get-diff-workflows
+        with:
+          PATTERNS: |
+            .github/workflows/*
+
+  check-timeouts:
+    name: Check Workflow Timeouts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: get-diff
+    if: ${{ always() && needs.get-diff.outputs.workflows }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+      - name: Install yq
+        run: |
+          mkdir -p $HOME/bin
+          curl -L https://github.com/mikefarah/yq/releases/download/v4.33.2/yq_linux_amd64 -o $HOME/bin/yq
+          chmod +x $HOME/bin/yq
+      - name: Check Workflow Timeouts
+        run: |
+          for file in $(find .github/workflows -name '*.yml' -o -name '*.yaml'); do
+            num_jobs_without_timeout=$(yq eval 'select(has("jobs")) | .jobs[].timeout-minutes' "$file" | grep null | wc -l)
+            if [ "$num_jobs_without_timeout" -gt 0 ]; then
+              echo "At least one job without timeout found in $file"
+              exit 1
+            else
+              timeout=$(yq eval 'select(has("jobs")) | .jobs[].timeout-minutes' "$file" | sort -n -r | head -1)
+              if [ "$timeout" -gt 20 ]; then
+                echo "Timeout value greater than 20 minutes found in $file"
+                exit 1
+              fi
+            fi
+          done
+
+  build:
+    name: Lint, Build and Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v2
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+
+      - name: Cache local Maven repository
+        uses: actions/cache@v2
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Run install-jars
+        run: make install-jar
+      - name: Run CI
+        run: make ci

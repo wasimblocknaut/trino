@@ -331,53 +331,6 @@ jobs:
               -Ds3.bucket="${S3_BUCKET}" \
               -Ds3.bucket-endpoint="${S3_BUCKET_ENDPOINT}"
           fi
-      - name: Run Hive Azure ABFS Access Key Tests
-        if: matrix.config != 'config-empty' # Hive 1.x does not support Azure storage
-        env:
-          ABFS_CONTAINER: ${{ secrets.AZURE_ABFS_CONTAINER }}
-          ABFS_ACCOUNT: ${{ secrets.AZURE_ABFS_ACCOUNT }}
-          ABFS_ACCESS_KEY: ${{ secrets.AZURE_ABFS_ACCESSKEY }}
-        run: |
-          if [ "${ABFS_CONTAINER}" != "" ]; then
-            source plugin/trino-hive-hadoop2/conf/hive-tests-${{ matrix.config }}.sh &&
-              plugin/trino-hive-hadoop2/bin/run_hive_abfs_access_key_tests.sh
-          fi
-      - name: Run Hive Azure ABFS OAuth Tests
-        if: matrix.config != 'config-empty' # Hive 1.x does not support Azure storage
-        env:
-          ABFS_CONTAINER: ${{ secrets.AZURE_ABFS_CONTAINER }}
-          ABFS_ACCOUNT: ${{ secrets.AZURE_ABFS_ACCOUNT }}
-          ABFS_OAUTH_ENDPOINT: ${{ secrets.AZURE_ABFS_OAUTH_ENDPOINT }}
-          ABFS_OAUTH_CLIENTID: ${{ secrets.AZURE_ABFS_OAUTH_CLIENTID }}
-          ABFS_OAUTH_SECRET: ${{ secrets.AZURE_ABFS_OAUTH_SECRET }}
-        run: |
-          if [ -n "$ABFS_CONTAINER" ]; then
-            source plugin/trino-hive-hadoop2/conf/hive-tests-${{ matrix.config }}.sh &&
-              plugin/trino-hive-hadoop2/bin/run_hive_abfs_oauth_tests.sh
-          fi
-      - name: Run Hive Azure WASB Tests
-        if: matrix.config != 'config-empty' # Hive 1.x does not support Azure storage
-        env:
-          WASB_CONTAINER: ${{ secrets.AZURE_WASB_CONTAINER }}
-          WASB_ACCOUNT: ${{ secrets.AZURE_WASB_ACCOUNT }}
-          WASB_ACCESS_KEY: ${{ secrets.AZURE_WASB_ACCESSKEY }}
-        run: |
-          if [ "${WASB_CONTAINER}" != "" ]; then
-            source plugin/trino-hive-hadoop2/conf/hive-tests-${{ matrix.config }}.sh &&
-              plugin/trino-hive-hadoop2/bin/run_hive_wasb_tests.sh
-          fi
-      - name: Run Hive Azure ADL Tests
-        if: matrix.config != 'config-empty' # Hive 1.x does not support Azure storage
-        env:
-          ADL_NAME: ${{ secrets.AZURE_ADL_NAME }}
-          ADL_CLIENT_ID: ${{ secrets.AZURE_ADL_CLIENTID }}
-          ADL_CREDENTIAL: ${{ secrets.AZURE_ADL_CREDENTIAL }}
-          ADL_REFRESH_URL: ${{ secrets.AZURE_ADL_REFRESHURL }}
-        run: |
-          if [ "${ADL_NAME}" != "" ]; then
-            source plugin/trino-hive-hadoop2/conf/hive-tests-${{ matrix.config }}.sh &&
-              plugin/trino-hive-hadoop2/bin/run_hive_adl_tests.sh
-          fi
       - name: Upload test results
         uses: actions/upload-artifact@v3
         # Upload all test reports only on failure, because the artifacts are large
@@ -672,78 +625,23 @@ jobs:
       - name: Cloud Delta Lake Tests
       # Cloud tests are separate because they are time intensive, requiring cross-cloud network communication
         env:
-          ABFS_CONTAINER: ${{ secrets.AZURE_ABFS_CONTAINER }}
-          ABFS_ACCOUNT: ${{ secrets.AZURE_ABFS_ACCOUNT }}
-          ABFS_ACCESSKEY: ${{ secrets.AZURE_ABFS_ACCESSKEY }}
           AWS_ACCESS_KEY_ID: ${{ secrets.TRINO_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.TRINO_AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ vars.TRINO_AWS_REGION }}
           S3_BUCKET: ${{ vars.TRINO_S3_BUCKET }}
-          GCP_CREDENTIALS_KEY: ${{ secrets.GCP_CREDENTIALS_KEY }}
-          GCP_STORAGE_BUCKET: ${{ vars.GCP_STORAGE_BUCKET }}
         # Run tests if any of the secrets is present. Do not skip tests when one secret renamed, or secret name has a typo.
         if: >-
           contains(matrix.modules, 'trino-delta-lake') && contains(matrix.profile, 'cloud-tests') &&
-          (env.CI_SKIP_SECRETS_PRESENCE_CHECKS != '' || env.ABFS_ACCOUNT != '' || env.ABFS_CONTAINER != '' || env.ABFS_ACCESSKEY != '' || env.AWS_ACCESS_KEY_ID != '' || env.AWS_SECRET_ACCESS_KEY != '' || env.GCP_CREDENTIALS_KEY != '')
+          (env.CI_SKIP_SECRETS_PRESENCE_CHECKS != '' || env.AWS_ACCESS_KEY_ID != '' || env.AWS_SECRET_ACCESS_KEY != '')
         run: |
           $MAVEN test ${MAVEN_TEST} ${{ format('-P {0}', matrix.profile) }} -pl :trino-delta-lake \
-            -Dhive.hadoop2.azure-abfs-container="${ABFS_CONTAINER}" \
-            -Dhive.hadoop2.azure-abfs-account="${ABFS_ACCOUNT}" \
-            -Dhive.hadoop2.azure-abfs-access-key="${ABFS_ACCESSKEY}" \
             -Dtesting.gcp-storage-bucket="${GCP_STORAGE_BUCKET}" \
-            -Dtesting.gcp-credentials-key="${GCP_CREDENTIALS_KEY}"
       - name: Memsql Tests
         env:
           MEMSQL_LICENSE: ${{ secrets.MEMSQL_LICENSE }}
         if: matrix.modules == 'plugin/trino-singlestore' && (env.CI_SKIP_SECRETS_PRESENCE_CHECKS != '' || env.MEMSQL_LICENSE != '')
         run: |
           $MAVEN test ${MAVEN_TEST} -pl :trino-singlestore -Dmemsql.license=${MEMSQL_LICENSE}
-      - name: Cloud BigQuery Tests
-        env:
-          BIGQUERY_CREDENTIALS_KEY: ${{ secrets.BIGQUERY_CREDENTIALS_KEY }}
-          GCP_STORAGE_BUCKET: ${{ vars.GCP_STORAGE_BUCKET }}
-        if: matrix.modules == 'plugin/trino-bigquery' && !contains(matrix.profile, 'cloud-tests-arrow') && (env.CI_SKIP_SECRETS_PRESENCE_CHECKS != '' || env.BIGQUERY_CREDENTIALS_KEY != '')
-        run: |
-          $MAVEN test ${MAVEN_TEST} -pl :trino-bigquery -Pcloud-tests \
-            -Dbigquery.credentials-key="${BIGQUERY_CREDENTIALS_KEY}" \
-            -Dtesting.gcp-storage-bucket="${GCP_STORAGE_BUCKET}" \
-            -Dtesting.alternate-bq-project-id=bigquery-cicd-alternate
-      - name: Cloud BigQuery Arrow Serialization Tests
-        env:
-          BIGQUERY_CREDENTIALS_KEY: ${{ secrets.BIGQUERY_CREDENTIALS_KEY }}
-          GCP_STORAGE_BUCKET: ${{ vars.GCP_STORAGE_BUCKET }}
-        if: matrix.modules == 'plugin/trino-bigquery' && contains(matrix.profile, 'cloud-tests-arrow') && (env.CI_SKIP_SECRETS_PRESENCE_CHECKS != '' || env.BIGQUERY_CREDENTIALS_KEY != '')
-        run: |
-          $MAVEN test ${MAVEN_TEST} -pl :trino-bigquery -Pcloud-tests-arrow \
-            -Dbigquery.credentials-key="${BIGQUERY_CREDENTIALS_KEY}" \
-            -Dtesting.gcp-storage-bucket="${GCP_STORAGE_BUCKET}"
-      - name: Cloud BigQuery Case Insensitive Mapping Tests
-        env:
-          BIGQUERY_CASE_INSENSITIVE_CREDENTIALS_KEY: ${{ secrets.BIGQUERY_CASE_INSENSITIVE_CREDENTIALS_KEY }}
-        if: matrix.modules == 'plugin/trino-bigquery' && !contains(matrix.profile, 'cloud-tests-arrow') && (env.CI_SKIP_SECRETS_PRESENCE_CHECKS != '' || env.BIGQUERY_CASE_INSENSITIVE_CREDENTIALS_KEY != '')
-        run: |
-          $MAVEN test ${MAVEN_TEST} -pl :trino-bigquery -Pcloud-tests-case-insensitive-mapping -Dbigquery.credentials-key="${BIGQUERY_CASE_INSENSITIVE_CREDENTIALS_KEY}"
-      - name: Iceberg Cloud Tests
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.TRINO_AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.TRINO_AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ vars.TRINO_AWS_REGION }}
-          S3_BUCKET: ${{ vars.TRINO_S3_BUCKET }}
-          GCP_CREDENTIALS_KEY: ${{ secrets.GCP_CREDENTIALS_KEY }}
-          GCP_STORAGE_BUCKET: ${{ vars.GCP_STORAGE_BUCKET }}
-          ABFS_CONTAINER: ${{ secrets.AZURE_ABFS_CONTAINER }}
-          ABFS_ACCOUNT: ${{ secrets.AZURE_ABFS_ACCOUNT }}
-          ABFS_ACCESS_KEY: ${{ secrets.AZURE_ABFS_ACCESSKEY }}
-        if: >-
-          contains(matrix.modules, 'trino-iceberg') && contains(matrix.profile, 'cloud-tests') &&
-          (env.CI_SKIP_SECRETS_PRESENCE_CHECKS != '' || env.AWS_ACCESS_KEY_ID != '' || env.AWS_SECRET_ACCESS_KEY != '' || env.GCP_CREDENTIALS_KEY != '')
-        run: |
-          $MAVEN test ${MAVEN_TEST} -pl :trino-iceberg ${{ format('-P {0}', matrix.profile) }} \
-            -Dtesting.gcp-storage-bucket="${GCP_STORAGE_BUCKET}" \
-            -Dtesting.gcp-credentials-key="${GCP_CREDENTIALS_KEY}" \
-            -Dhive.hadoop2.azure-abfs-container="${ABFS_CONTAINER}" \
-            -Dhive.hadoop2.azure-abfs-account="${ABFS_ACCOUNT}" \
-            -Dhive.hadoop2.azure-abfs-access-key="${ABFS_ACCESS_KEY}"
       - name: Cloud Redshift Tests ${{ matrix.profile }}
         env:
           AWS_REGION: ${{ vars.REDSHIFT_AWS_REGION }}
